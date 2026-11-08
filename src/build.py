@@ -51,25 +51,23 @@ elif MODE == "pages":
                .replace("/*__ASSETS__*/", "")
                .replace("<!--__MANIFEST__-->",
                         '<link rel="manifest" href="manifest.webmanifest">\n'
-                        '<link rel="icon" href="icon.svg" type="image/svg+xml">')
+                        '<link rel="icon" href="icon-192.png" type="image/png">\n'
+                        '<link rel="apple-touch-icon" href="apple-touch-icon.png">')
                .replace("__POSE_VERSION__", version))
     write(dist / "index.html", html)
 
-    icon = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
-            '<rect width="512" height="512" rx="96" fill="#0b1a2e"/>'
-            '<line x1="150" y1="420" x2="380" y2="90" stroke="#e8b23a" stroke-width="34" stroke-linecap="round"/>'
-            '<line x1="190" y1="365" x2="250" y2="405" stroke="#f4f1ea" stroke-width="30" stroke-linecap="round"/>'
-            '<text x="256" y="300" font-size="150" font-weight="bold" fill="#f4f1ea" text-anchor="middle" '
-            'font-family="sans-serif">素</text></svg>')
-    write(dist / "icon.svg", icon)
+    for icon in ("icon-512.png", "icon-192.png", "apple-touch-icon.png"):
+        shutil.copy(ROOT / icon, dist / icon)
     write(dist / "manifest.webmanifest", json.dumps({
         "name": "素振りカウンター", "short_name": "素振り", "start_url": "./", "scope": "./",
         "display": "standalone", "orientation": "portrait",
         "background_color": "#0b1a2e", "theme_color": "#0b1a2e",
-        "icons": [{"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
+        "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                  {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}],
     }, ensure_ascii=False, indent=2))
 
-    files = ["./", "index.html", "manifest.webmanifest", "icon.svg"] + [f"mp/{n}" for n, _ in ASSETS] + ["mp/pose.js"]
+    shell = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"]
+    files = shell + [f"mp/{n}" for n, _ in ASSETS] + ["mp/pose.js"]
     # 内容のハッシュをキャッシュ名に入れ、更新時に自動で入れ替える
     h = hashlib.sha256(b"sw-v2")  # SWの処理を変えたらここも変える
     for f in sorted(p for p in dist.rglob("*") if p.is_file() and p.name != "sw.js"):
@@ -78,8 +76,8 @@ elif MODE == "pages":
     sw = f"""// 素振りカウンター Service Worker（build.py が生成）
 // 画面のファイルだけ先に保存し、モデル類はページが取得したときに保存する（二重ダウンロード防止）
 const CACHE = "{cache}";
-const SHELL = {json.dumps(files[:4])};
-const MODELS = {json.dumps(files[4:])};
+const SHELL = {json.dumps(shell)};
+const MODELS = {json.dumps(files[len(shell):])};
 self.addEventListener("install", e => {{
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 }});
