@@ -71,23 +71,36 @@ elif MODE == "pages":
 
     files = ["./", "index.html", "manifest.webmanifest", "icon.svg"] + [f"mp/{n}" for n, _ in ASSETS] + ["mp/pose.js"]
     # 内容のハッシュをキャッシュ名に入れ、更新時に自動で入れ替える
-    h = hashlib.sha256()
+    h = hashlib.sha256(b"sw-v2")  # SWの処理を変えたらここも変える
     for f in sorted(p for p in dist.rglob("*") if p.is_file() and p.name != "sw.js"):
         h.update(f.read_bytes())
     cache = "suburi-" + h.hexdigest()[:10]
     sw = f"""// 素振りカウンター Service Worker（build.py が生成）
+// 画面のファイルだけ先に保存し、モデル類はページが取得したときに保存する（二重ダウンロード防止）
 const CACHE = "{cache}";
-const FILES = {json.dumps(files)};
+const SHELL = {json.dumps(files[:4])};
+const MODELS = {json.dumps(files[4:])};
 self.addEventListener("install", e => {{
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 }});
 self.addEventListener("activate", e => {{
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
+  // 初回はページが先にモデルを読み込むため、ブラウザのHTTPキャッシュ経由で後追い保存する
+  caches.open(CACHE).then(async c => {{
+    for (const f of MODELS){{ if (!(await c.match(f))) {{ try{{ await c.add(f); }}catch(err){{}} }} }}
+  }});
 }});
 self.addEventListener("fetch", e => {{
-  if (e.request.method !== "GET") return;
-  e.respondWith(caches.match(e.request, {{ ignoreSearch: true }}).then(r => r || fetch(e.request)));
+  const req = e.request;
+  if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
+  e.respondWith(caches.open(CACHE).then(async c => {{
+    const hit = await c.match(req, {{ ignoreSearch: true }});
+    if (hit) return hit;
+    const res = await fetch(req);
+    if (res.ok) c.put(req, res.clone());
+    return res;
+  }}));
 }});
 """
     write(dist / "sw.js", sw)
