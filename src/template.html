@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b1a2e">
+<title>素振りカウンター</title>
+<style>
+  :root{
+    --bg:#0b1a2e; --panel:#13253f; --line:#2a4368; --text:#f4f1ea; --sub:#a9b6c9;
+    --accent:#e8b23a; --ok:#4cc38a; --ng:#e5534b;
+    --font:"Meiryo UI","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden;
+    user-select:none;-webkit-user-select:none}
+  button{font-family:inherit;color:inherit;border:none;cursor:pointer}
+  .screen{position:fixed;inset:0;display:none;flex-direction:column}
+  .screen.on{display:flex}
+
+  /* ---------- 設定画面 ---------- */
+  #setup{padding:max(20px,env(safe-area-inset-top)) 18px max(20px,env(safe-area-inset-bottom));overflow-y:auto;gap:16px}
+  h1{font-size:26px;letter-spacing:.08em;text-align:center;margin-top:6px}
+  h1 small{display:block;font-size:12px;color:var(--sub);letter-spacing:.02em;margin-top:4px;font-weight:normal}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .card h2{font-size:14px;color:var(--sub);font-weight:normal;margin-bottom:10px}
+  .target-row{display:flex;align-items:center;justify-content:center;gap:12px}
+  .target-row button{width:52px;height:52px;border-radius:50%;background:var(--line);font-size:18px}
+  #targetVal{font-size:52px;font-weight:bold;min-width:150px;text-align:center;color:var(--accent)}
+  #targetVal span{font-size:20px;color:var(--text);margin-left:4px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px}
+  .chips button{padding:8px 14px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font-size:15px}
+  .chips button.sel{background:var(--accent);color:#1a1200;border-color:var(--accent);font-weight:bold}
+  .start{margin-top:auto;padding:20px;border-radius:16px;background:var(--accent);color:#1a1200;font-size:24px;font-weight:bold;letter-spacing:.1em}
+  .start:disabled{opacity:.5}
+  #loadMsg{text-align:center;color:var(--sub);font-size:13px;min-height:18px}
+  .hist{font-size:14px;color:var(--sub);line-height:1.8}
+  .hist b{color:var(--text)}
+  .hint{font-size:12.5px;color:var(--sub);line-height:1.7}
+
+  /* ---------- 計測画面 ---------- */
+  #run{background:#000}
+  #stage{position:absolute;inset:0;overflow:hidden}
+  #video,#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .mirror{transform:scaleX(-1)}
+  #hud{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;
+    padding:max(10px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))}
+  .topbar{display:flex;justify-content:space-between;align-items:center;font-size:15px;
+    text-shadow:0 1px 3px #000}
+  .pill{background:rgba(0,0,0,.55);padding:6px 12px;border-radius:999px;display:flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--ng)}
+  .dot.on{background:var(--ok)}
+  #bigCount{margin-top:4px;text-align:center;font-weight:bold;line-height:1;
+    font-size:min(34vw,26vh);text-shadow:0 4px 18px rgba(0,0,0,.8),0 0 2px #000;transition:transform .12s}
+  #bigCount.pop{transform:scale(1.12)}
+  #ofTarget{text-align:center;font-size:22px;text-shadow:0 2px 6px #000}
+  .bar{height:12px;background:rgba(255,255,255,.2);border-radius:6px;margin:10px 6px 0;overflow:hidden}
+  #barFill{height:100%;width:0;background:var(--accent);transition:width .2s}
+  #msg{text-align:center;font-size:28px;font-weight:bold;margin-top:14px;min-height:36px;color:var(--accent);
+    text-shadow:0 2px 8px #000}
+  #meter{position:absolute;right:10px;top:34%;bottom:22%;width:16px;background:rgba(0,0,0,.45);border-radius:8px}
+  #meter .th{position:absolute;left:-4px;right:-4px;height:3px;border-radius:2px}
+  #meter .th.up{background:var(--ok)} #meter .th.dn{background:#5aa0ff}
+  #meterHand{position:absolute;left:1px;right:1px;height:14px;border-radius:7px;background:#fff;transition:top .05s}
+  .controls{margin-top:auto;display:flex;gap:10px;pointer-events:auto}
+  .controls button{flex:1;padding:16px 0;border-radius:14px;background:rgba(19,37,63,.85);font-size:17px;
+    border:1px solid var(--line)}
+  .controls .end{background:rgba(229,83,75,.85);border-color:transparent}
+  #countdown{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    font-size:40vw;font-weight:bold;color:var(--accent);text-shadow:0 6px 30px #000;pointer-events:none}
+  #guide{position:absolute;left:0;right:0;top:44%;text-align:center;font-size:17px;line-height:1.6;
+    text-shadow:0 2px 6px #000;pointer-events:none}
+
+  /* ---------- 結果画面 ---------- */
+  #result{padding:max(24px,env(safe-area-inset-top)) 18px max(20px,env(safe-area-inset-bottom));gap:14px;
+    align-items:stretch;text-align:center}
+  #resCount{font-size:96px;font-weight:bold;color:var(--accent);line-height:1.1;margin-top:20px}
+  #resTitle{font-size:22px}
+  table{width:100%;border-collapse:collapse;font-size:16px}
+  td{padding:10px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+  td:first-child{color:var(--sub);text-align:left} td:last-child{text-align:right;font-weight:bold}
+</style>
+</head>
+<body>
+
+<!-- ============ 設定画面 ============ -->
+<section id="setup" class="screen on">
+  <h1>素振りカウンター<small>内カメラで正面から撮って、自動で数える</small></h1>
+
+  <div class="card">
+    <h2>目標本数（最大1000本）</h2>
+    <div class="target-row">
+      <button id="tMinus">−10</button>
+      <div id="targetVal">100<span>本</span></div>
+      <button id="tPlus">＋10</button>
+    </div>
+    <div class="chips" id="targetChips"></div>
+  </div>
+
+  <div class="card">
+    <h2>声かけの間隔</h2>
+    <div class="chips" id="intervalChips"></div>
+  </div>
+
+  <div class="card">
+    <h2>判定の厳しさ（振りかぶり・振り下ろしの高さ）</h2>
+    <div class="chips" id="levelChips"></div>
+    <p class="hint" style="margin-top:8px">数え漏れが多いときは「ゆるめ」、二重に数えるときは「きびしめ」</p>
+  </div>
+
+  <div class="card">
+    <h2>記録</h2>
+    <div class="hist" id="hist">まだ記録なし</div>
+  </div>
+
+  <p class="hint">置き方：スマホを縦にして、Yukiの正面2〜3mに置く。竹刀を振りかぶった手が画面に入る高さに。画面に回数が大きく出るので、見ながら振れる</p>
+
+  <div id="loadMsg">準備中…</div>
+  <button class="start" id="startBtn" disabled>はじめる</button>
+</section>
+
+<!-- ============ 計測画面 ============ -->
+<section id="run" class="screen">
+  <div id="stage">
+    <video id="video" class="mirror" playsinline muted autoplay></video>
+    <canvas id="overlay" class="mirror"></canvas>
+  </div>
+  <div id="hud">
+    <div class="topbar">
+      <div class="pill"><span class="dot" id="dot"></span><span id="detTxt">検出なし</span></div>
+      <div class="pill"><span id="timer">0:00</span>／<span id="pace">0</span>本/分</div>
+    </div>
+    <div id="bigCount">0</div>
+    <div id="ofTarget">／ 100本</div>
+    <div class="bar"><div id="barFill"></div></div>
+    <div id="msg"></div>
+    <div class="controls">
+      <button id="minusBtn">−1</button>
+      <button id="pauseBtn">一時停止</button>
+      <button id="plusBtn">＋1</button>
+      <button id="endBtn" class="end">終了</button>
+    </div>
+  </div>
+  <div id="meter"><div class="th up" id="thUp"></div><div class="th dn" id="thDn"></div><div id="meterHand"></div></div>
+  <div id="guide"></div>
+  <div id="countdown"></div>
+</section>
+
+<!-- ============ 結果画面 ============ -->
+<section id="result" class="screen">
+  <div id="resTitle">おつかれさま！</div>
+  <div id="resCount">0</div>
+  <table>
+    <tr><td>目標</td><td id="resTarget">-</td></tr>
+    <tr><td>時間</td><td id="resTime">-</td></tr>
+    <tr><td>ペース</td><td id="resPace">-</td></tr>
+    <tr><td>自己ベスト</td><td id="resBest">-</td></tr>
+  </table>
+  <button class="start" id="againBtn">もう一度</button>
+  <button class="start" id="homeBtn" style="margin-top:0;background:var(--line);color:var(--text)">設定にもどる</button>
+</section>
+
+<!-- MediaPipe Pose 本体（@mediapipe/pose __POSE_VERSION__ を同梱） -->
+<script>/*__POSE_JS__*/</script>
+<!-- モデル・WASM（base64で同梱。オフライン動作用） -->
+/*__ASSETS__*/
+
+<script>
+"use strict";
+/* =========================================================
+   声かけセリフ（ここを書き換えれば自由に変更できる）
+   {n}=現在の本数、{r}=目標までの残り本数
+   ========================================================= */
+const VOICE = {
+  start:   "よーい、はじめ！",
+  every:   ["{n}本！いい調子！", "{n}本！その調子！", "{n}本！気合い入ってる！",
+            "{n}本！ナイス素振り！", "{n}本！どんどんいこう！", "{n}本！振りが鋭い！"],
+  half:    "{n}本！折り返し！後半もいくぞ！",
+  last:    "{n}本！あと{r}本！ラストスパート！",
+  goal:    "{n}本、目標達成！おめでとう！",
+  over:    ["{n}本！限界突破！", "{n}本！まだいけるのか！", "{n}本！すごすぎる！"],
+  hundred: "{n}本！大台突破！",
+  m500:    "{n}本！もう達人の域だ！",
+  m1000:   "千本素振り、達成！本当にすごい！",
+};
+
+const MAX_COUNT = 1000;
+const TARGET_PRESETS = [50, 100, 200, 300, 500, 1000];
+const INTERVALS = [10, 20, 50];
+/* 判定しきい値：鼻の高さを0、肩幅を1とした手首の高さ（上が＋） */
+const LEVELS = {
+  "ゆるめ":   { up: 0.35, down: -0.30 },
+  "ふつう":   { up: 0.60, down: -0.60 },
+  "きびしめ": { up: 0.90, down: -1.00 },
+};
+const MIN_REP_MS = 250;       // これより速い連続カウントは無視
+const LOST_RESET_MS = 1200;   // 人物を見失ったら状態をリセット
+
+/* ---------- 設定・記録（localStorage は失敗しても動く） ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("suburi_"+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("suburi_"+k, JSON.stringify(v)); }catch(e){} },
+};
+const cfg = {
+  target:   store.get("target", 100),
+  interval: store.get("interval", 20),
+  level:    store.get("level", "ふつう"),
+};
+
+const $ = id => document.getElementById(id);
+function show(id){ document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id)); }
+function fmtTime(ms){ const s = Math.floor(ms/1000); return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); }
+
+/* ---------- 設定画面 ---------- */
+function renderSetup(){
+  cfg.target = Math.max(10, Math.min(MAX_COUNT, cfg.target));
+  $("targetVal").innerHTML = cfg.target + "<span>本</span>";
+  chips("targetChips", TARGET_PRESETS, v => v === cfg.target, v => v + "本", v => { cfg.target = v; save(); });
+  chips("intervalChips", INTERVALS, v => v === cfg.interval, v => v + "本ごと", v => { cfg.interval = v; save(); });
+  chips("levelChips", Object.keys(LEVELS), v => v === cfg.level, v => v, v => { cfg.level = v; save(); });
+  const hist = store.get("history", []);
+  const best = store.get("best", 0);
+  $("hist").innerHTML = hist.length
+    ? "自己ベスト <b>" + best + "本</b><br>" + hist.slice(0,5).map(h =>
+        h.date + "　<b>" + h.count + "本</b>（" + fmtTime(h.ms) + "）").join("<br>")
+    : "まだ記録なし";
+}
+function chips(id, list, isSel, label, onPick){
+  const el = $(id); el.innerHTML = "";
+  list.forEach(v => {
+    const b = document.createElement("button");
+    b.textContent = label(v); if (isSel(v)) b.className = "sel";
+    b.onclick = () => onPick(v);
+    el.appendChild(b);
+  });
+}
+function save(){ store.set("target", cfg.target); store.set("interval", cfg.interval); store.set("level", cfg.level); renderSetup(); }
+$("tMinus").onclick = () => { cfg.target = Math.max(10, cfg.target - 10); save(); };
+$("tPlus").onclick  = () => { cfg.target = Math.min(MAX_COUNT, cfg.target + 10); save(); };
+
+/* ---------- 音（効果音＝WebAudio、声＝端末の読み上げ） ---------- */
+let actx = null;
+function audioInit(){
+  try{
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+  }catch(e){}
+  try{ // iOS は最初の読み上げをタップ操作内で行う必要がある
+    const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u);
+  }catch(e){}
+}
+function tone(freq, dur, when=0, type="triangle", vol=0.25){
+  if (!actx) return;
+  const t = actx.currentTime + when;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function repSound(n){ // 区切り内で少しずつ音程が上がる
+  const step = (n - 1) % cfg.interval;
+  tone(520 * Math.pow(2, Math.min(step, 24) / 24), 0.09);
+}
+function chime(){ [0,4,7,12].forEach((s,i) => tone(660*Math.pow(2,s/12), 0.25, i*0.07, "sine", 0.22)); }
+function fanfare(){
+  const seq = [[0,0],[4,.12],[7,.24],[12,.36],[7,.52],[12,.64]];
+  seq.forEach(([s,t]) => tone(523*Math.pow(2,s/12), 0.3, t, "square", 0.12));
+}
+let jaVoice = null;
+function pickVoice(){
+  try{
+    const vs = speechSynthesis.getVoices();
+    jaVoice = vs.find(v => /ja[-_]JP/i.test(v.lang)) || vs.find(v => /^ja/i.test(v.lang)) || null;
+  }catch(e){}
+}
+try{ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }catch(e){}
+function say(text){
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP"; if (jaVoice) u.voice = jaVoice;
+    u.rate = 1.1; u.pitch = 1.1; u.volume = 1;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const fill = (s, n) => s.replace(/\{n\}/g, n).replace(/\{r\}/g, Math.max(0, cfg.target - n));
+
+/* n本目で何を言うか（言わない場合は null） */
+function announcement(n){
+  const T = cfg.target, I = cfg.interval;
+  if (n === MAX_COUNT) return { text: VOICE.m1000, fx: "fanfare" };
+  if (n === T)         return { text: fill(VOICE.goal, n), fx: "fanfare" };
+  if (n === 500)       return { text: fill(VOICE.m500, n), fx: "chime" };
+  if (n > T && n % 100 === 0) return { text: fill(VOICE.hundred, n), fx: "chime" };
+  if (n < T && T - n === Math.min(I, 20) && T >= 40) return { text: fill(VOICE.last, n), fx: "chime" };
+  if (n < T && T % 2 === 0 && n === T/2 && T >= 40)  return { text: fill(VOICE.half, n), fx: "chime" };
+  if (n % I === 0) return { text: fill(n > T ? pick(VOICE.over) : pick(VOICE.every), n), fx: "chime" };
+  return null;
+}
+
+/* ---------- 回数判定（状態機械） ----------
+   手首が「上しきい値」より上がる → 振りかぶり
+   その後「下しきい値」より下がる → 1本 */
+const counter = {
+  state: "wait",  // wait=構え待ち, down=下, up=振りかぶり中
+  ema: null, lastRep: 0, lastSeen: 0,
+  reset(){ this.state = "wait"; this.ema = null; },
+  /** rel: 手の高さ（null=未検出）。1本成立なら true */
+  feed(rel, now){
+    const th = LEVELS[cfg.level];
+    if (rel == null){
+      if (now - this.lastSeen > LOST_RESET_MS) this.reset();
+      return false;
+    }
+    this.lastSeen = now;
+    this.ema = this.ema == null ? rel : this.ema * 0.4 + rel * 0.6;
+    const h = this.ema;
+    if (this.state === "wait"){ if (h < th.down) this.state = "down"; return false; }
+    if (this.state === "down"){ if (h > th.up) this.state = "up"; return false; }
+    if (this.state === "up" && h < th.down){
+      this.state = "down";
+      if (now - this.lastRep < MIN_REP_MS) return false;
+      this.lastRep = now; return true;
+    }
+    return false;
+  },
+};
+
+/* 骨格から「手の高さ」を計算：鼻=0、肩幅=1、上が＋ */
+function handHeight(lm, W, H){
+  if (!lm) return null;
+  const P = i => lm[i], vis = i => (lm[i].visibility ?? 1);
+  const nose = P(0), ls = P(11), rs = P(12);
+  if (vis(0) < 0.4 || vis(11) < 0.4 || vis(12) < 0.4) return null;
+  const sw = Math.hypot((ls.x - rs.x) * W, (ls.y - rs.y) * H);
+  if (sw < 10) return null;
+  const hands = [15, 16].filter(i => vis(i) > 0.3).map(i => P(i).y * H);
+  if (!hands.length) return null;
+  const handY = hands.reduce((a,b) => a+b, 0) / hands.length;
+  return (nose.y * H - handY) / sw;
+}
+
+/* ---------- MediaPipe 初期化（同梱アセットを blob URL 化） ---------- */
+let pose = null, poseReady = false;
+async function initPose(){
+  const urls = {};
+  const nodes = document.querySelectorAll('script[type="application/x-asset"]');
+  let i = 0;
+  for (const el of nodes){
+    i++; $("loadMsg").textContent = "モデル展開中… " + i + "/" + nodes.length;
+    const res = await fetch("data:" + el.dataset.mime + ";base64," + el.textContent.trim());
+    const blob = new Blob([await res.arrayBuffer()], { type: el.dataset.mime });
+    urls[el.dataset.name] = URL.createObjectURL(blob);
+    el.textContent = ""; // メモリ解放
+  }
+  pose = new Pose({ locateFile: f => {
+    const name = f.split("/").pop();
+    if (!urls[name]) console.warn("未同梱ファイル要求:", name);
+    return urls[name] || name;
+  }});
+  pose.setOptions({ modelComplexity: 0, smoothLandmarks: true, enableSegmentation: false,
+                    minDetectionConfidence: 0.5, minTrackingConfidence: 0.5, selfieMode: false });
+  pose.onResults(onResults);
+  $("loadMsg").textContent = "モデル起動中…";
+  await pose.initialize();
+  poseReady = true;
+}
+
+/* ---------- カメラ ---------- */
+let stream = null;
+async function startCamera(){
+  if (stream) return;
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 1280 }, frameRate: { ideal: 30 } },
+  });
+  const v = $("video"); v.srcObject = stream; await v.play();
+}
+function stopCamera(){ if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; } }
+
+/* ---------- 計測 ---------- */
+const S = { count: 0, running: false, paused: false, t0: 0, pausedAcc: 0, pauseAt: 0, finished: false };
+let wakeLock = null;
+
+async function startSession(){
+  audioInit();
+  $("startBtn").disabled = true;
+  try{ await startCamera(); }
+  catch(e){
+    $("startBtn").disabled = false;
+    alert("カメラを使えなかった：" + e.message + "\nブラウザのカメラ許可を確認して");
+    return;
+  }
+  try{ wakeLock = await navigator.wakeLock?.request("screen"); }catch(e){}
+  Object.assign(S, { count: 0, running: false, paused: false, pausedAcc: 0, finished: false });
+  counter.reset();
+  updateHud(); $("msg").textContent = ""; $("pauseBtn").textContent = "一時停止";
+  layoutMeter();
+  show("run");
+  loop();
+  await countdown();
+  S.t0 = performance.now(); S.running = true;
+  $("startBtn").disabled = false;
+}
+function countdown(){
+  return new Promise(res => {
+    const el = $("countdown"); el.style.display = "flex";
+    let k = 3; el.textContent = k; tone(880, 0.15);
+    const id = setInterval(() => {
+      k--;
+      if (k > 0){ el.textContent = k; tone(880, 0.15); }
+      else { clearInterval(id); el.textContent = "始め"; el.style.fontSize = "28vw";
+             tone(1320, 0.4); say(VOICE.start);
+             setTimeout(() => { el.style.display = "none"; el.style.fontSize = ""; res(); }, 700); }
+    }, 1000);
+  });
+}
+
+function addRep(manual){
+  if (S.count >= MAX_COUNT) return;
+  S.count++;
+  const a = announcement(S.count);
+  if (a){
+    if (a.fx === "fanfare") fanfare(); else chime();
+    setTimeout(() => say(a.text), a.fx === "fanfare" ? 450 : 150);
+    flashMsg(a.text);
+  } else if (!manual) repSound(S.count);
+  const b = $("bigCount"); b.classList.add("pop"); setTimeout(() => b.classList.remove("pop"), 120);
+  updateHud();
+  if (S.count >= MAX_COUNT) setTimeout(finish, 4000);
+}
+let msgTimer = null;
+function flashMsg(t){ $("msg").textContent = t; clearTimeout(msgTimer); msgTimer = setTimeout(() => $("msg").textContent = "", 3000); }
+
+function elapsed(){ if (!S.t0) return 0; const now = S.paused ? S.pauseAt : performance.now(); return now - S.t0 - S.pausedAcc; }
+function updateHud(){
+  $("bigCount").textContent = S.count;
+  $("bigCount").style.color = S.count >= cfg.target ? "var(--accent)" : "var(--text)";
+  $("ofTarget").textContent = "／ " + cfg.target + "本";
+  $("barFill").style.width = Math.min(100, S.count / cfg.target * 100) + "%";
+}
+setInterval(() => {
+  if (!S.running) return;
+  const ms = elapsed();
+  $("timer").textContent = fmtTime(ms);
+  $("pace").textContent = ms > 5000 ? Math.round(S.count / (ms / 60000)) : 0;
+}, 500);
+
+/* 手の高さメーター：上端=+1.5、下端=-2.0 */
+const M_TOP = 1.5, M_BOT = -2.0;
+const mPos = v => (Math.max(M_BOT, Math.min(M_TOP, v)) - M_TOP) / (M_BOT - M_TOP) * 100;
+function layoutMeter(){ const th = LEVELS[cfg.level]; $("thUp").style.top = mPos(th.up) + "%"; $("thDn").style.top = mPos(th.down) + "%"; }
+
+let looping = false;
+async function loop(){
+  if (looping) return; looping = true;
+  const v = $("video");
+  while (stream){
+    if (poseReady && v.readyState >= 2 && !S.finished){
+      try{ await pose.send({ image: v }); }catch(e){ console.error(e); }
+    }
+    await new Promise(r => requestAnimationFrame(r));
+  }
+  looping = false;
+}
+
+const EDGES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[0,11],[0,12]];
+function onResults(r){
+  const v = $("video"), c = $("overlay");
+  const W = v.videoWidth, H = v.videoHeight;
+  if (c.width !== W || c.height !== H){ c.width = W; c.height = H; }
+  const g = c.getContext("2d"); g.clearRect(0, 0, W, H);
+  const lm = r.poseLandmarks;
+  const rel = handHeight(lm, W, H);
+  const now = performance.now();
+
+  $("dot").classList.toggle("on", rel != null);
+  $("detTxt").textContent = rel == null ? "検出なし" : ({wait:"構えて", down:"振りかぶって", up:"振り下ろして"})[counter.state];
+  $("guide").textContent = (S.running && rel == null) ? "全身が入るように立って\n（顔と両手が見えるように）" : "";
+  $("guide").style.whiteSpace = "pre-line";
+  if (rel != null) $("meterHand").style.top = "calc(" + mPos(rel) + "% - 7px)";
+
+  if (lm){ // 骨格の描画
+    g.lineWidth = Math.max(3, W / 160); g.strokeStyle = "rgba(232,178,58,.9)";
+    EDGES.forEach(([a,b]) => { g.beginPath(); g.moveTo(lm[a].x*W, lm[a].y*H); g.lineTo(lm[b].x*W, lm[b].y*H); g.stroke(); });
+    [15,16].forEach(i => { g.fillStyle = "#fff"; g.beginPath(); g.arc(lm[i].x*W, lm[i].y*H, W/60, 0, Math.PI*2); g.fill(); });
+  }
+  if (S.running && !S.paused && counter.feed(rel, now)) addRep(false);
+}
+
+/* ---------- ボタン ---------- */
+$("plusBtn").onclick  = () => { if (S.running) addRep(true); };
+$("minusBtn").onclick = () => { if (S.count > 0){ S.count--; updateHud(); } };
+$("pauseBtn").onclick = () => {
+  if (!S.running) return;
+  if (!S.paused){ S.paused = true; S.pauseAt = performance.now(); $("pauseBtn").textContent = "再開"; }
+  else { S.pausedAcc += performance.now() - S.pauseAt; S.paused = false; counter.reset(); $("pauseBtn").textContent = "一時停止"; }
+};
+$("endBtn").onclick = () => finish();
+$("startBtn").onclick = startSession;
+$("againBtn").onclick = startSession;
+$("homeBtn").onclick = () => { stopCamera(); renderSetup(); show("setup"); };
+
+function finish(){
+  if (S.finished) return;
+  const ms = elapsed();
+  S.finished = true; S.running = false;
+  try{ wakeLock?.release(); }catch(e){} wakeLock = null;
+  const best = store.get("best", 0);
+  const isBest = S.count > best;
+  if (S.count > 0){
+    const d = new Date();
+    const hist = store.get("history", []);
+    hist.unshift({ date: (d.getMonth()+1) + "/" + d.getDate() + " " + d.getHours() + ":" + String(d.getMinutes()).padStart(2,"0"),
+                   count: S.count, ms });
+    store.set("history", hist.slice(0, 50));
+    if (isBest) store.set("best", S.count);
+  }
+  $("resCount").textContent = S.count + "本";
+  $("resTitle").textContent = S.count >= cfg.target ? "目標達成！おつかれさま！" : "おつかれさま！";
+  $("resTarget").textContent = cfg.target + "本";
+  $("resTime").textContent = fmtTime(ms);
+  $("resPace").textContent = ms > 5000 ? Math.round(S.count / (ms / 60000)) + "本/分" : "-";
+  $("resBest").textContent = (isBest ? S.count + "本（更新！）" : best + "本");
+  show("result");
+}
+
+/* ---------- 起動 ---------- */
+renderSetup();
+initPose().then(() => {
+  $("loadMsg").textContent = "準備OK";
+  $("startBtn").disabled = false;
+}).catch(e => {
+  console.error(e);
+  $("loadMsg").textContent = "モデルの読み込みに失敗：" + (e && e.message || e);
+});
+</script>
+</body>
+</html>
