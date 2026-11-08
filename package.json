@@ -1,0 +1,8 @@
+{
+  "name": "suburi-counter",
+  "private": true,
+  "description": "剣道の素振りを内カメラで数えるWebアプリ",
+  "dependencies": {
+    "@mediapipe/pose": "0.5.1675469404"
+  }
+}

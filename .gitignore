@@ -1,2 +1,4 @@
 node_modules/
+_site/
 src/suburi_counter.html
+package-lock.json

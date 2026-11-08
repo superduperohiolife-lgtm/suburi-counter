@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b1a2e">
 <title>素振りカウンター</title>
+<!--__MANIFEST__-->
 <style>
   :root{
     --bg:#0b1a2e; --panel:#13253f; --line:#2a4368; --text:#f4f1ea; --sub:#a9b6c9;
@@ -356,8 +357,10 @@ async function initPose(){
     urls[el.dataset.name] = URL.createObjectURL(blob);
     el.textContent = ""; // メモリ解放
   }
+  const split = nodes.length === 0; // Pages版：モデルは mp/ 配下の別ファイル
   pose = new Pose({ locateFile: f => {
     const name = f.split("/").pop();
+    if (split) return "mp/" + name;
     if (!urls[name]) console.warn("未同梱ファイル要求:", name);
     return urls[name] || name;
   }});
@@ -529,6 +532,10 @@ function finish(){
 }
 
 /* ---------- 起動 ---------- */
+// Pages版：Service Worker でモデル等をキャッシュし、2回目以降はオフラインで起動
+if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:"){
+  navigator.serviceWorker.register("sw.js").catch(e => console.warn("SW登録失敗", e));
+}
 renderSetup();
 initPose().then(() => {
   $("loadMsg").textContent = "準備OK";

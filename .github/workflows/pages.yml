@@ -18,10 +18,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: 公開ファイルを準備
-        run: |
-          mkdir -p _site
-          cp index.html _site/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: MediaPipe Pose を取得
+        run: npm install --no-audit --no-fund
+      - name: Pages用にビルド（index.html + mp/ + sw.js）
+        run: python3 src/build.py node_modules/@mediapipe/pose pages _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
