@@ -56,17 +56,21 @@ elif MODE == "pages":
                .replace("__POSE_VERSION__", version))
     write(dist / "index.html", html)
 
-    for icon in ("icon-512.png", "icon-192.png", "apple-touch-icon.png"):
+    for icon in ("icon-512.png", "icon-192.png", "icon-maskable-512.png", "icon-maskable-192.png", "apple-touch-icon.png"):
         shutil.copy(ROOT / icon, dist / icon)
     write(dist / "manifest.webmanifest", json.dumps({
         "name": "素振りカウンター", "short_name": "素振り", "start_url": "./", "scope": "./",
         "display": "standalone", "orientation": "portrait",
         "background_color": "#0b1a2e", "theme_color": "#0b1a2e",
         "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-                  {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}],
+                  {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                  # Android は maskable を優先し、白い円の背景なしで全面に表示する
+                  {"src": "icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+                  {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}],
     }, ensure_ascii=False, indent=2))
 
-    shell = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"]
+    shell = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png",
+             "icon-maskable-192.png", "icon-maskable-512.png", "apple-touch-icon.png"]
     files = shell + [f"mp/{n}" for n, _ in ASSETS] + ["mp/pose.js"]
     # 内容のハッシュをキャッシュ名に入れ、更新時に自動で入れ替える
     h = hashlib.sha256(b"sw-v2")  # SWの処理を変えたらここも変える
